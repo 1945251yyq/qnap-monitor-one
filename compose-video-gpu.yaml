@@ -1,7 +1,7 @@
 # 视频观众 GPU 版：无需上传文件；PCIe/GPU 采集需要特权模式。
 services:
   qnap-monitor:
-    image: ghcr.io/1945251yyq/qnap-monitor-one:latest
+    image: ydxian/qnap-monitor-one:latest
     container_name: qnap-monitor-one
     restart: unless-stopped
     user: "0:0"
