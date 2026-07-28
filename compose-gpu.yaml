@@ -1,0 +1,19 @@
+services:
+  qnap-monitor:
+    image: ghcr.io/1945251yyq/qnap-monitor-one:latest
+    container_name: qnap-monitor-one
+    restart: unless-stopped
+    user: "0:0"
+    privileged: true
+    env_file:
+      - /share/Container/qnap-monitor-one/qnap.env
+    environment:
+      QNAP_GPU_ENABLED: "true"
+    ports:
+      - "3300:3000"
+    volumes:
+      - /share:/share:ro
+      - /proc:/host-proc:ro
+      - /sys:/host-sys:ro
+      - /etc/config:/host-etc-config:ro
+      - /share/Container/qnap-monitor-one/data:/data
