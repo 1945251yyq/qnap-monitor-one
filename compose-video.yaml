@@ -1,4 +1,4 @@
-# 视频观众版：无需上传任何文件，修改下方 4 个值后直接粘贴到 Container Station。
+# 视频观众普通版：无需上传 qnap.env；修改下方 4 个值后直接粘贴到 Container Station。
 services:
   qnap-monitor:
     image: ydxian/qnap-monitor-one:latest
