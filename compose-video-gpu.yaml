@@ -1,4 +1,4 @@
-# 视频观众 GPU 版：无需上传文件；PCIe/GPU 采集需要特权模式。
+# 视频观众 GPU 版：无需上传 qnap.env；PCIe/GPU 采集需要特权模式。
 services:
   qnap-monitor:
     image: ydxian/qnap-monitor-one:latest
