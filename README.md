@@ -23,7 +23,8 @@
 修改 NAS IP、名称、SNMP 社区名和 Grafana 密码，粘贴到
 **Container Station → 应用程序 → 创建**。
 
-数据保存在 Docker 命名卷 `qnap_monitor_one_data`。
+Container Station 会将应用数据直接保存在
+`/share/Container/qnap-monitor-one/data`，可通过 File Station 查看、备份和迁移。
 
 ### 可修改版本
 
