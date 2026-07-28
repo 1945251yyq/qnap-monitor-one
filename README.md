@@ -74,15 +74,21 @@ docker compose -f compose-build.yaml build
 docker compose -f compose-build.yaml up -d
 ```
 
-## 发布公开镜像
+## 公开镜像
 
-1. 将本目录提交到公开 GitHub 仓库。
-2. 推送到 `main`，工作流会构建 `linux/amd64` 和 `linux/arm64`。
-3. 将 GHCR 包设为 Public。
-4. 把所有 Compose 中的 `REPLACE_WITH_GITHUB_NAME` 改成仓库所有者名称。
-5. 发布版本标签，例如 `v1.0.0`，并在视频中固定使用该版本。
+默认从 Docker Hub 拉取：
 
-公开 GHCR 包可以匿名拉取，观众不需要登录。
+```text
+ydxian/qnap-monitor-one:latest
+```
+
+GitHub Actions 会同时构建 `linux/amd64` 和 `linux/arm64`，并推送到：
+
+- Docker Hub：`ydxian/qnap-monitor-one`
+- GHCR：`ghcr.io/1945251yyq/qnap-monitor-one`
+
+两个镜像均可匿名拉取，观众不需要登录。正式视频建议固定使用版本标签，
+例如 `ydxian/qnap-monitor-one:v1.0.0`，避免未来的 `latest` 更新影响教程。
 
 ## 资源与取舍
 
