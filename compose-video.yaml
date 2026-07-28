@@ -25,8 +25,4 @@ services:
       - /proc:/host-proc:ro
       - /sys:/host-sys:ro
       - /etc/config:/host-etc-config:ro
-      - qnap_monitor_data:/data
-
-volumes:
-  qnap_monitor_data:
-    name: qnap_monitor_one_data
+      - /share/Container/qnap-monitor-one/data:/data
