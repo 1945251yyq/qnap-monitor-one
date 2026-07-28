@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: QNAP
+    orgId: 1
+    folder: QNAP
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /data/dashboard
+      foldersFromFilesStructure: false
