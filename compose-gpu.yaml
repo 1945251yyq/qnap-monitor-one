@@ -1,6 +1,6 @@
 services:
   qnap-monitor:
-    image: ghcr.io/1945251yyq/qnap-monitor-one:latest
+    image: ydxian/qnap-monitor-one:latest
     container_name: qnap-monitor-one
     restart: unless-stopped
     user: "0:0"
