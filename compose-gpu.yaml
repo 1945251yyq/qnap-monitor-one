@@ -1,3 +1,4 @@
+# 配置文件 GPU/PCIe 版：必须先上传 /share/Container/qnap-monitor-one/qnap.env。
 services:
   qnap-monitor:
     image: ydxian/qnap-monitor-one:latest
