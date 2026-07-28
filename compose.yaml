@@ -1,3 +1,4 @@
+# 配置文件普通版：必须先上传 /share/Container/qnap-monitor-one/qnap.env。
 services:
   qnap-monitor:
     image: ydxian/qnap-monitor-one:latest
