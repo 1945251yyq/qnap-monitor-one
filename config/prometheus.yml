@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+
+  - job_name: qnap_exporter
+    scrape_interval: 30s
+    scrape_timeout: 25s
+    static_configs:
+      - targets: ["127.0.0.1:9273"]
+    # The unified endpoint preserves the legacy job labels expected by the
+    # existing dashboards.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "qnap_disk_inventory_.*"
+        target_label: job
+        replacement: qnap_host_exporter
+      - source_labels: [__name__]
+        regex: "qnap_pcie_.*"
+        target_label: job
+        replacement: qnap_pcie_exporter
