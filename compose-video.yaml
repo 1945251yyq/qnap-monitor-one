@@ -1,7 +1,7 @@
 # 视频观众版：无需上传任何文件，修改下方 4 个值后直接粘贴到 Container Station。
 services:
   qnap-monitor:
-    image: ghcr.io/1945251yyq/qnap-monitor-one:latest
+    image: ydxian/qnap-monitor-one:latest
     container_name: qnap-monitor-one
     restart: unless-stopped
     user: "0:0"
