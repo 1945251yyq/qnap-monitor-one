@@ -1,0 +1,32 @@
+# 视频观众版：无需上传任何文件，修改下方 4 个值后直接粘贴到 Container Station。
+services:
+  qnap-monitor:
+    image: ghcr.io/1945251yyq/qnap-monitor-one:latest
+    container_name: qnap-monitor-one
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      NAS_IP: "192.168.1.100"
+      QNAP_HOSTNAME: "QNAP-NAS"
+      SNMP_COMMUNITY: "public"
+      GF_SECURITY_ADMIN_PASSWORD: "请改成强密码"
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_DEFAULT_LANGUAGE: "zh-Hans"
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: "Asia/Shanghai"
+      TZ: "Asia/Shanghai"
+      PROMETHEUS_RETENTION: "30d"
+      QNAP_SHARE_SCAN_INTERVAL: "3600"
+      QNAP_GPU_ENABLED: "false"
+    ports:
+      - "3300:3000"
+    volumes:
+      - /share:/share:ro
+      - /proc:/host-proc:ro
+      - /sys:/host-sys:ro
+      - /etc/config:/host-etc-config:ro
+      - qnap_monitor_data:/data
+
+volumes:
+  qnap_monitor_data:
+    name: qnap_monitor_one_data
