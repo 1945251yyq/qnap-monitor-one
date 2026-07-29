@@ -2395,6 +2395,327 @@
           }
         }
       ]
+    },
+    {
+      "id": 60,
+      "type": "row",
+      "title": "当前高负载进程",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 86,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 61,
+      "type": "table",
+      "title": "当前高负载进程（按 CPU 占用排序）",
+      "description": "读取 QNAP 宿主机 /proc，每 15 秒计算一次 CPU 增量，显示当前 CPU 占用最高的 15 个进程；同时显示内存占比、常驻内存、线程数、用户、状态和脱敏后的命令摘要。单个 CPU 核心满载记为 100%，多线程进程可能超过 100%。",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 87,
+        "w": 24,
+        "h": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto",
+              "wrapText": true
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU占用"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "内存占比"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "常驻内存"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "用户"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "进程"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "状态"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "线程数"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "命令摘要"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 520
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "auto",
+                  "wrapText": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "enablePagination": false,
+        "sortBy": [
+          {
+            "displayName": "CPU占用",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "topk(15, qnap_process_cpu_percent{job=\"qnap_process_exporter\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "qnap_process_memory_percent{job=\"qnap_process_exporter\"} and on(host,pid,user,process,command,state) topk(15, qnap_process_cpu_percent{job=\"qnap_process_exporter\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "B",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "qnap_process_rss_bytes{job=\"qnap_process_exporter\"} and on(host,pid,user,process,command,state) topk(15, qnap_process_cpu_percent{job=\"qnap_process_exporter\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "C",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "qnap_process_thread_count{job=\"qnap_process_exporter\"} and on(host,pid,user,process,command,state) topk(15, qnap_process_cpu_percent{job=\"qnap_process_exporter\"})",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "refId": "D",
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "host": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "pid": 0,
+              "user": 1,
+              "process": 2,
+              "Value #A": 3,
+              "Value #B": 4,
+              "Value #C": 5,
+              "Value #D": 6,
+              "state": 7,
+              "command": 8
+            },
+            "renameByName": {
+              "pid": "PID",
+              "user": "用户",
+              "process": "进程",
+              "Value #A": "CPU占用",
+              "Value #B": "内存占比",
+              "Value #C": "常驻内存",
+              "Value #D": "线程数",
+              "state": "状态",
+              "command": "命令摘要",
+              "Value": "CPU占用"
+            }
+          }
+        }
+      ]
     }
   ],
   "refresh": "10s",
@@ -2416,8 +2737,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "QNAP NAS 中文监控 Lite（GPU/PCIe）",
-  "uid": "qnap-nas-lite-gpu",
-  "version": 1,
+  "title": "QNAP NAS 中文监控（v8.6 当前高负载进程版）",
+  "uid": "qnap-nas-cn-v2",
+  "version": 24,
   "weekStart": "monday"
 }

@@ -1,7 +1,13 @@
 #!/bin/sh
 set -eu
 
-. /opt/qnap/qnap-detect-platform.sh
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+PLATFORM_LIBRARY="${SCRIPT_DIR}/qnap-detect-platform.sh"
+if [ ! -r "${PLATFORM_LIBRARY}" ]; then
+  echo "Missing platform detection library: ${PLATFORM_LIBRARY}" >&2
+  exit 1
+fi
+. "${PLATFORM_LIBRARY}"
 qnap_detect_platform
 MEMINFO="${QNAP_PROC_ROOT}/meminfo"
 
@@ -13,8 +19,8 @@ fi
 ARC_SIZE=0
 ARC_EVICTABLE=0
 if [ -n "${QNAP_ARCSTATS}" ] && [ -r "${QNAP_ARCSTATS}" ]; then
-  ARC_SIZE="$$(awk '$$1=="size" {print $$3; exit}' "${QNAP_ARCSTATS}" 2>/dev/null || true)"
-  ARC_EVICTABLE="$$(awk '$$1=="evictable" {print $$3; exit}' "${QNAP_ARCSTATS}" 2>/dev/null || true)"
+  ARC_SIZE="$(awk '$1=="size" {print $3; exit}' "${QNAP_ARCSTATS}" 2>/dev/null || true)"
+  ARC_EVICTABLE="$(awk '$1=="evictable" {print $3; exit}' "${QNAP_ARCSTATS}" 2>/dev/null || true)"
 fi
 case "${ARC_SIZE}" in ''|*[!0-9]*) ARC_SIZE=0 ;; esac
 case "${ARC_EVICTABLE}" in ''|*[!0-9]*) ARC_EVICTABLE=0 ;; esac
@@ -35,11 +41,11 @@ awk -v platform="${QNAP_DETECTED_PLATFORM}" \
     -v mode="${MODE}" \
     -v arc_size="${ARC_SIZE}" \
     -v arc_evictable="${ARC_EVICTABLE}" '
-  /^MemTotal:/ { total=$$2*1024 }
-  /^MemFree:/ { free=$$2*1024 }
-  /^Buffers:/ { buffered=$$2*1024 }
-  /^Cached:/ { cached=$$2*1024 }
-  /^MemAvailable:/ { kernel_available=$$2*1024 }
+  /^MemTotal:/ { total=$2*1024 }
+  /^MemFree:/ { free=$2*1024 }
+  /^Buffers:/ { buffered=$2*1024 }
+  /^Cached:/ { cached=$2*1024 }
+  /^MemAvailable:/ { kernel_available=$2*1024 }
   END {
     # QTS: QNAP-style used memory excludes free, buffers and page cache.
     # QuTS hero: additionally excludes the evictable part of ZFS ARC, while
@@ -59,4 +65,3 @@ awk -v platform="${QNAP_DETECTED_PLATFORM}" \
     printf "qnap_host_memory_collector,mode=%s info=1\n", mode
   }
 ' "${MEMINFO}"
-

@@ -1,0 +1,57 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate project
+        run: |
+          chmod +x scripts/*.sh exporter/scripts/*.sh pcie-exporter/*.sh
+          ./scripts/validate-project.sh
+
+      - name: Validate Compose
+        run: |
+          cp .env.example .env
+          QNAP_PROJECT_ROOT="${GITHUB_WORKSPACE}" \
+          QNAP_DATA_ROOT="${RUNNER_TEMP}/qnap-monitoring" \
+            docker compose config --quiet
+          rm -f .env
+
+      - name: Build custom image
+        run: docker build --pull --tag qnap-monitor-one:validate .
+
+      - name: Validate image contents
+        run: |
+          docker run --rm qnap-monitor-one:validate \
+            /bin/sh -c '
+              set -eu
+              find /opt/qnap -maxdepth 3 -type f -print
+              for file in /opt/qnap/scripts/*.sh; do
+                /bin/sh -n "${file}"
+              done
+              command -v snmptable
+              command -v snmpwalk
+              command -v snmptranslate
+              ! grep -R -nE "\$\$\(|\$\$\{|\$\$[0-9]" /opt/qnap
+            '
+
+      - name: Run complete stack smoke test
+        run: ./scripts/smoke-test.sh

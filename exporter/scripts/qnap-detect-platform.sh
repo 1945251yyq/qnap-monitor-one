@@ -3,7 +3,7 @@
 # It uses feature detection rather than relying only on product names.
 
 qnap_escape_tag() {
-  printf '%s' "$$1" | sed 's/\\/\\\\/g; s/ /\\ /g; s/,/\\,/g; s/=/\\=/g'
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/ /\\ /g; s/,/\\,/g; s/=/\\=/g'
 }
 
 qnap_detect_platform() {
@@ -21,14 +21,14 @@ qnap_detect_platform() {
 
   # Optional preferred volume name. If it does not exist, automatic detection continues.
   if [ -n "${QNAP_DATA_VOLUME_NAME:-}" ] && [ -d "${QNAP_SHARE_ROOT}/${QNAP_DATA_VOLUME_NAME}" ]; then
-    QNAP_DETECTED_DATA_ROOT="$$(readlink -f "${QNAP_SHARE_ROOT}/${QNAP_DATA_VOLUME_NAME}" 2>/dev/null || true)"
+    QNAP_DETECTED_DATA_ROOT="$(readlink -f "${QNAP_SHARE_ROOT}/${QNAP_DATA_VOLUME_NAME}" 2>/dev/null || true)"
   fi
 
   # Resolve the real volume root from the first valid QNAP shared-folder path.
   if [ -z "${QNAP_DETECTED_DATA_ROOT}" ] && [ -r "${QNAP_SMB_CONF}" ]; then
     while IFS= read -r share_path; do
       [ -n "${share_path}" ] || continue
-      real_path="$$(readlink -f "${share_path}" 2>/dev/null || true)"
+      real_path="$(readlink -f "${share_path}" 2>/dev/null || true)"
       case "${real_path}" in
         "${QNAP_SHARE_ROOT}"/*)
           relative="${real_path#${QNAP_SHARE_ROOT}/}"
@@ -37,7 +37,7 @@ qnap_detect_platform() {
           case "${volume_component}" in
             ZFS*_DATA|CACHEDEV*_DATA)
               if [ -d "${candidate}" ]; then
-                QNAP_DETECTED_DATA_ROOT="$$(readlink -f "${candidate}" 2>/dev/null || true)"
+                QNAP_DETECTED_DATA_ROOT="$(readlink -f "${candidate}" 2>/dev/null || true)"
                 break
               fi
               ;;
@@ -45,16 +45,16 @@ qnap_detect_platform() {
           ;;
       esac
     done <<EOF
-$$(awk '
+$(awk '
   function trim(s) {
     sub(/^[[:space:]]+/, "", s)
-    sub(/[[:space:]\r]+$$/, "", s)
+    sub(/[[:space:]\r]+$/, "", s)
     sub(/^"/, "", s)
-    sub(/"$$/, "", s)
+    sub(/"$/, "", s)
     return s
   }
   /^[[:space:]]*[Pp][Aa][Tt][Hh][[:space:]]*=/ {
-    p=$$0
+    p=$0
     sub(/^[^=]*=[[:space:]]*/, "", p)
     p=trim(p)
     if (p ~ /^\/share\//) print p
@@ -67,14 +67,14 @@ EOF
   if [ -z "${QNAP_DETECTED_DATA_ROOT}" ]; then
     for candidate in "${QNAP_SHARE_ROOT}"/ZFS*_DATA "${QNAP_SHARE_ROOT}"/CACHEDEV*_DATA; do
       [ -d "${candidate}" ] || continue
-      QNAP_DETECTED_DATA_ROOT="$$(readlink -f "${candidate}" 2>/dev/null || true)"
+      QNAP_DETECTED_DATA_ROOT="$(readlink -f "${candidate}" 2>/dev/null || true)"
       [ -n "${QNAP_DETECTED_DATA_ROOT}" ] && break
     done
   fi
 
   if [ -n "${QNAP_DETECTED_DATA_ROOT}" ]; then
     QNAP_DETECTED_VOLUME_NAME="${QNAP_DETECTED_DATA_ROOT##*/}"
-    QNAP_DETECTED_FS="$$(stat -f -c '%T' "${QNAP_DETECTED_DATA_ROOT}" 2>/dev/null || printf 'unknown')"
+    QNAP_DETECTED_FS="$(stat -f -c '%T' "${QNAP_DETECTED_DATA_ROOT}" 2>/dev/null || printf 'unknown')"
   fi
 
   # QNAP QuTS hero may expose ARC under /proc/lpl; standard OpenZFS uses /proc/spl.

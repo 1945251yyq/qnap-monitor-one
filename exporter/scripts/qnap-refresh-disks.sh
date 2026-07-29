@@ -6,6 +6,13 @@ CACHE_FILE="${CACHE_DIR}/disk-inventory.influx"
 RAW_FILE="${CACHE_DIR}/disk-inventory.raw.$$"
 TMP_FILE="${CACHE_FILE}.tmp.$$"
 LOCK_DIR="${CACHE_DIR}/disk-refresh.lock"
+CONFIG_DIR="${QNAP_CONFIG_DIR:-/opt/qnap/config}"
+DISK_CONFIG="${CONFIG_DIR}/qnap-disk-once.conf"
+
+if [ ! -r "${DISK_CONFIG}" ]; then
+  echo "Required Telegraf configuration is missing: ${DISK_CONFIG}" >&2
+  exit 1
+fi
 
 mkdir -p "${CACHE_DIR}"
 acquire_lock() {
@@ -18,7 +25,7 @@ acquire_lock() {
 
     lock_pid=""
     if [ -r "${LOCK_DIR}/pid" ]; then
-      lock_pid="$$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
+      lock_pid="$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
     fi
 
     case "${lock_pid}" in
@@ -35,7 +42,7 @@ acquire_lock() {
         rm -rf "${LOCK_DIR}" 2>/dev/null || true
         ;;
     esac
-    attempt=$$((attempt + 1))
+    attempt=$((attempt + 1))
   done
   echo "Cannot acquire disk inventory lock" >&2
   return 1
@@ -52,7 +59,7 @@ trap cleanup EXIT INT TERM
 
 # --once guarantees an immediate SNMP gather instead of waiting for a
 # 24-hour plugin interval. Logs go to stderr; line protocol goes to stdout.
-if ! telegraf --once --config /etc/telegraf/qnap-disk-once.conf > "${RAW_FILE}"; then
+if ! telegraf --once --config "${DISK_CONFIG}" > "${RAW_FILE}"; then
   echo "Disk inventory SNMP collection failed" >&2
   exit 1
 fi
@@ -64,6 +71,5 @@ if [ ! -s "${TMP_FILE}" ]; then
 fi
 
 mv -f "${TMP_FILE}" "${CACHE_FILE}"
-COUNT="$$(wc -l < "${CACHE_FILE}" | tr -d ' ')"
+COUNT="$(wc -l < "${CACHE_FILE}" | tr -d ' ')"
 echo "Disk inventory refresh completed: ${COUNT} row(s)" >&2
-

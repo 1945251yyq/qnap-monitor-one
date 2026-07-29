@@ -1,48 +1,54 @@
-ARG TELEGRAF_VERSION=1.39.2
-ARG PROMETHEUS_VERSION=v3.13.0
-ARG GRAFANA_VERSION=13.1.1
-
-FROM telegraf:${TELEGRAF_VERSION} AS telegraf
-FROM prom/prometheus:${PROMETHEUS_VERSION} AS prometheus
-
-# Ubuntu/glibc is intentional: QNAP's NVIDIA driver tools are glibc binaries.
-FROM grafana/grafana:${GRAFANA_VERSION}-ubuntu
+FROM telegraf:1.39.2-alpine
 
 USER root
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       ca-certificates coreutils curl findutils gawk grep sed util-linux \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /opt/qnap/config /opt/qnap/scripts /opt/qnap/dashboards \
-       /etc/telegraf /data /var/cache \
-    && ln -s /data/cache /var/cache/qnap-monitoring
+RUN apk add --no-cache \
+      ca-certificates \
+      coreutils \
+      findutils \
+      gawk \
+      grep \
+      net-snmp-tools \
+      pciutils \
+      procps \
+      python3 \
+      sed \
+      util-linux
 
-COPY --from=telegraf /usr/bin/telegraf /usr/local/bin/telegraf
-COPY --from=prometheus /bin/prometheus /usr/local/bin/prometheus
+WORKDIR /opt/qnap
 
-COPY config/qnap-unified.conf /opt/qnap/config/qnap-unified.conf
-COPY config/qnap-unified-gpu.conf /opt/qnap/config/qnap-unified-gpu.conf
-COPY config/qnap-disk-once.conf /etc/telegraf/qnap-disk-once.conf
-COPY config/prometheus.yml /opt/qnap/config/prometheus.yml
-COPY scripts/ /opt/qnap/scripts/
-COPY grafana/dashboards/ /opt/qnap/dashboards/
-COPY grafana/provisioning/ /etc/grafana/provisioning/
-COPY docker-entrypoint.sh /opt/qnap/docker-entrypoint.sh
+COPY exporter/config/ /opt/qnap/config/
+COPY exporter/scripts/ /opt/qnap/scripts/
+COPY pcie-exporter/qnap-pcie.conf /opt/qnap/config/qnap-pcie.conf
+COPY pcie-exporter/qnap-pcie-collect.sh /opt/qnap/scripts/qnap-pcie-collect.sh
+COPY process-exporter/qnap-process-exporter.py /opt/qnap/scripts/qnap-process-exporter.py
+COPY dashboard-builder/qnap-dashboard-builder.py /opt/qnap/scripts/qnap-dashboard-builder.py
+COPY grafana/dashboards/qnap-cn.json /opt/qnap/templates/qnap-cn-base.json
 
-RUN chmod 0755 /usr/local/bin/telegraf /usr/local/bin/prometheus \
-    /opt/qnap/docker-entrypoint.sh /opt/qnap/scripts/*
+RUN chmod 0755 /opt/qnap/scripts/*.sh /opt/qnap/scripts/*.py \
+    && for file in /opt/qnap/scripts/*.sh; do \
+         echo "Checking ${file}"; \
+         /bin/sh -n "${file}"; \
+       done \
+    && if grep -R -nE '\$\$\(|\$\$\{|\$\$[0-9]' \
+         /opt/qnap/scripts /opt/qnap/config; then \
+         echo "Compose escaping remains in extracted files" >&2; \
+         exit 1; \
+       fi \
+    && if grep -R -n '/usr/local/bin/qnap-' \
+         /opt/qnap/scripts /opt/qnap/config; then \
+         echo "Legacy QNAP script path remains" >&2; \
+         exit 1; \
+       fi \
+    && python3 -m py_compile /opt/qnap/scripts/*.py \
+    && command -v snmptable \
+    && command -v snmpwalk \
+    && command -v snmptranslate
 
-ENV GF_PATHS_DATA=/data/grafana \
-    GF_PATHS_LOGS=/data/grafana/logs \
-    GF_PATHS_PLUGINS=/data/grafana/plugins \
-    GF_PATHS_PROVISIONING=/etc/grafana/provisioning \
-    GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/data/dashboard/qnap-cn.json
+ENV QNAP_CONFIG_DIR=/opt/qnap/config \
+    QNAP_DASHBOARD_TEMPLATE=/opt/qnap/templates/qnap-cn-base.json
 
-EXPOSE 3000
-VOLUME ["/data"]
+EXPOSE 9273 9274 9275 9276
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
-  CMD curl -fsS http://127.0.0.1:3000/api/health >/dev/null || exit 1
-
-ENTRYPOINT ["/opt/qnap/docker-entrypoint.sh"]
+ENTRYPOINT []
+CMD ["telegraf", "--version"]
