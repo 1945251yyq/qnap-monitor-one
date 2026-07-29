@@ -10,7 +10,13 @@ cleanup() {
   QNAP_DATA_ROOT="${TMP_ROOT}" \
     docker compose ${COMPOSE_FILES} down --volumes --remove-orphans >/dev/null 2>&1 || true
   rm -f "${ROOT}/.env"
-  rm -rf "${TMP_ROOT}"
+  # Containers can create root-owned files in this exact mktemp directory.
+  # Prefer non-interactive sudo on CI so cleanup cannot mask the test result.
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -n rm -rf -- "${TMP_ROOT}" || true
+  else
+    rm -rf -- "${TMP_ROOT}" || true
+  fi
 }
 trap cleanup EXIT INT TERM
 

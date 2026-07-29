@@ -11,7 +11,10 @@ PASSWD_CANDIDATES = [
     os.path.join(PROC_ROOT, "1/root/etc/passwd"),
 ]
 HOSTNAME = os.environ.get("QNAP_HOSTNAME", "QNAP-NAS")
-PORT = int(os.environ.get("QNAP_PROCESS_EXPORTER_PORT", "9276"))
+# QNAP_PROCESS_EXPORTER_PORT is the host-side Compose mapping configured in .env.
+# Keep the container listener independent so changing the published port never
+# makes the service unreachable from its health check or Prometheus.
+PORT = int(os.environ.get("QNAP_PROCESS_LISTEN_PORT", "9276"))
 INTERVAL = max(5, int(os.environ.get("QNAP_PROCESS_SAMPLE_INTERVAL", "15")))
 TOP_N = min(50, max(5, int(os.environ.get("QNAP_PROCESS_TOP_N", "15"))))
 COMMAND_LIMIT = min(500, max(80, int(os.environ.get("QNAP_PROCESS_COMMAND_LIMIT", "220"))))
