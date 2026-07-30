@@ -2,12 +2,15 @@ package monitor
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (c *Collector) collectPCIe() ([]PCIeDevice, error) {
@@ -16,6 +19,7 @@ func (c *Collector) collectPCIe() ([]PCIeDevice, error) {
 	if err != nil {
 		return nil, fmt.Errorf("读取 PCIe: %w", err)
 	}
+	nvidiaMetricsByBDF := c.collectQNAPNVIDIA()
 	var devices []PCIeDevice
 	for _, entry := range entries {
 		bdf := strings.ToLower(entry.Name())
@@ -56,6 +60,9 @@ func (c *Collector) collectPCIe() ([]PCIeDevice, error) {
 		}
 		c.readDRMMetrics(bdf, &device)
 		c.readHwmon(dir, &device)
+		if metrics, ok := nvidiaMetricsByBDF[bdf]; ok {
+			applyNVIDIAMetrics(&device, metrics)
+		}
 		if device.Temperature > 0 || device.PowerWatts > 0 || device.FanRPM > 0 || device.GPUPercent > 0 || device.MemoryTotal > 0 {
 			device.Capability = "完整监控"
 		}
@@ -63,6 +70,119 @@ func (c *Collector) collectPCIe() ([]PCIeDevice, error) {
 	}
 	sort.Slice(devices, func(i, j int) bool { return devices[i].BDF < devices[j].BDF })
 	return devices, nil
+}
+
+type nvidiaMetrics struct {
+	model, bdf                                                string
+	gpu, memoryTotalMB, memoryUsedMB, temperature, fan, power float64
+	encoder, decoder                                          float64
+}
+
+func (c *Collector) collectQNAPNVIDIA() map[string]nvidiaMetrics {
+	result := map[string]nvidiaMetrics{}
+	installPath := qpkgInstallPath(filepath.Join(c.cfg.ConfigRoot, "qpkg.conf"), "NVIDIA_GPU_DRV")
+	sharePrefix := filepath.Clean(c.cfg.ShareRoot) + string(os.PathSeparator)
+	if installPath == "" || !strings.HasPrefix(filepath.Clean(installPath), sharePrefix) {
+		return result
+	}
+	var binary string
+	for _, candidate := range []string{
+		"usr/lib/bin/nvidia-smi", "usr/bin/nvidia-smi", "usr/nvidia/bin/nvidia-smi",
+	} {
+		path := filepath.Join(installPath, candidate)
+		if info, err := os.Stat(path); err == nil && info.Mode()&0o111 != 0 {
+			binary = path
+			break
+		}
+	}
+	if binary == "" {
+		return result
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary,
+		"--query-gpu=pci.bus_id,name,utilization.gpu,memory.total,memory.used,temperature.gpu,fan.speed,power.draw,utilization.encoder,utilization.decoder",
+		"--format=csv,noheader,nounits",
+	)
+	command.Env = append(os.Environ(), "LD_LIBRARY_PATH="+strings.Join([]string{
+		filepath.Join(installPath, "usr/lib"),
+		filepath.Join(installPath, "usr/lib64"),
+		filepath.Join(installPath, "usr/nvidia/lib64"),
+	}, ":"))
+	output, err := command.Output()
+	if err != nil {
+		return result
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		fields := strings.Split(line, ",")
+		if len(fields) < 10 {
+			continue
+		}
+		for index := range fields {
+			fields[index] = strings.TrimSpace(fields[index])
+		}
+		bdf := normalizeNVIDIABDF(fields[0])
+		if bdf == "" {
+			continue
+		}
+		result[bdf] = nvidiaMetrics{
+			bdf: bdf, model: fields[1], gpu: parseFloat(fields[2]),
+			memoryTotalMB: parseFloat(fields[3]), memoryUsedMB: parseFloat(fields[4]),
+			temperature: parseFloat(fields[5]), fan: parseFloat(fields[6]),
+			power: parseFloat(fields[7]), encoder: parseFloat(fields[8]), decoder: parseFloat(fields[9]),
+		}
+	}
+	return result
+}
+
+func qpkgInstallPath(path, packageName string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	inSection := false
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			inSection = line == "["+packageName+"]"
+			continue
+		}
+		if !inSection {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if ok && strings.EqualFold(strings.TrimSpace(key), "Install_Path") {
+			return strings.Trim(strings.TrimSpace(value), "\"")
+		}
+	}
+	return ""
+}
+
+func normalizeNVIDIABDF(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "00000000:")
+	if strings.Count(value, ":") == 1 {
+		value = "0000:" + value
+	}
+	return value
+}
+
+func applyNVIDIAMetrics(device *PCIeDevice, metrics nvidiaMetrics) {
+	device.Model = defaultString(metrics.model, device.Model)
+	device.GPUPercent = metrics.gpu
+	device.MemoryTotal = uint64(metrics.memoryTotalMB * 1024 * 1024)
+	device.MemoryUsed = uint64(metrics.memoryUsedMB * 1024 * 1024)
+	if device.MemoryTotal > 0 {
+		device.MemoryPct = float64(device.MemoryUsed) * 100 / float64(device.MemoryTotal)
+	}
+	device.Temperature = metrics.temperature
+	device.FanPercent = metrics.fan
+	device.PowerWatts = metrics.power
+	device.EncoderPct = metrics.encoder
+	device.DecoderPct = metrics.decoder
+	device.Capability = "QNAP NVIDIA 完整监控"
 }
 
 func eligiblePCIClass(class string) bool {

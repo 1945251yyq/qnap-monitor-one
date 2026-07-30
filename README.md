@@ -25,6 +25,7 @@
 - 主机高占用进程；命令行中的密码、令牌、密钥等参数会自动遮盖
 - PCIe 扩展显卡、网卡、NVMe/存储卡和 AI 加速卡
 - NVIDIA、AMD、Intel GPU 可从标准 sysfs、DRM、hwmon 与 NVIDIA proc 接口读取可用指标
+- 自动识别 QNAP `NVIDIA_GPU_DRV` 套件并读取 GPU、显存、温度、风扇、功耗和编解码负载
 - 本地 6 小时、24 小时和 7 天趋势
 - JSON API、健康检查和可选的 Prometheus `/metrics` 接口
 
@@ -98,6 +99,14 @@ PCIE_INCLUDE_BDFS=0000:01:00.0
 ```
 
 显卡能显示多少指标由 QNAP 固件和驱动实际开放的 sysfs/proc 接口决定。即使厂商驱动没有提供利用率与显存数据，设备型号、驱动、PCIe 链路和可读取的温度仍会显示。
+
+程序还会从 `/etc/config/qpkg.conf` 定位 QNAP 官方 `NVIDIA_GPU_DRV`，并尝试调用套件自带的 `nvidia-smi`。如果页面能识别显卡、但没有完整利用率，可在 Compose 的同一个服务中增加：
+
+```yaml
+privileged: true
+```
+
+然后重新创建项目。这仍然只有一个容器；该选项只是允许容器访问 QNAP 创建的 GPU 设备节点。没有独立显卡时不要开启。
 
 ## 主要设置
 

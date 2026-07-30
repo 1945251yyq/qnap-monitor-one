@@ -89,7 +89,10 @@ type PCIeDevice struct {
 	Temperature float64 `json:"temperature,omitempty"`
 	PowerWatts  float64 `json:"powerWatts,omitempty"`
 	FanRPM      float64 `json:"fanRpm,omitempty"`
+	FanPercent  float64 `json:"fanPercent,omitempty"`
 	GPUPercent  float64 `json:"gpuPercent,omitempty"`
+	EncoderPct  float64 `json:"encoderPercent,omitempty"`
+	DecoderPct  float64 `json:"decoderPercent,omitempty"`
 	MemoryTotal uint64  `json:"memoryTotal,omitempty"`
 	MemoryUsed  uint64  `json:"memoryUsed,omitempty"`
 	MemoryPct   float64 `json:"memoryPercent,omitempty"`

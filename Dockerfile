@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -o /out/qnap-status-lite ./cmd/qnap-status-lite
 
 FROM alpine:3.23
-RUN addgroup -S qnap && adduser -S -G qnap qnap
+RUN apk add --no-cache gcompat && addgroup -S qnap && adduser -S -G qnap qnap
 COPY --from=build /out/qnap-status-lite /usr/local/bin/qnap-status-lite
 EXPOSE 8080
 VOLUME ["/data"]
