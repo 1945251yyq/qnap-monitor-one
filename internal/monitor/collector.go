@@ -82,7 +82,18 @@ func (c *Collector) Collect(ctx context.Context) Snapshot {
 	run("snmp", func() (func(*Snapshot), error) {
 		system, fans, disks, volumes, err := c.collectSNMP()
 		return func(s *Snapshot) {
+			// Host /proc plus evictable ARC matches QNAP Resource Monitor.
+			// Preserve it when SNMP finishes after the host collector.
+			hostMemory := s.System.MemoryTotal > 0
+			memoryTotal, memoryUsed := s.System.MemoryTotal, s.System.MemoryUsed
+			memoryAvailable, memoryPercent := s.System.MemoryAvailable, s.System.MemoryPercent
+			arcSize, arcEvictable := s.System.ZFSARCBytes, s.System.ZFSARCEvictableBytes
 			s.System = mergeSystem(s.System, system)
+			if hostMemory {
+				s.System.MemoryTotal, s.System.MemoryUsed = memoryTotal, memoryUsed
+				s.System.MemoryAvailable, s.System.MemoryPercent = memoryAvailable, memoryPercent
+				s.System.ZFSARCBytes, s.System.ZFSARCEvictableBytes = arcSize, arcEvictable
+			}
 			s.Fans = fans
 			s.Disks = disks
 			if len(s.Volumes) == 0 {
