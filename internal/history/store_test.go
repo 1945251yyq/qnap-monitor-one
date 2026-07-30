@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/1945251yyq/qnap-status-lite/internal/monitor"
+	"github.com/1945251yyq/qnap-monitor-one/internal/monitor"
 )
 
 func TestRoundTrip(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/1945251yyq/qnap-status-lite/internal/history"
-	"github.com/1945251yyq/qnap-status-lite/internal/monitor"
+	"github.com/1945251yyq/qnap-monitor-one/internal/history"
+	"github.com/1945251yyq/qnap-monitor-one/internal/monitor"
 )
 
 //go:embed static/*

@@ -1,4 +1,4 @@
-module github.com/1945251yyq/qnap-status-lite
+module github.com/1945251yyq/qnap-monitor-one
 
 go 1.26
 
