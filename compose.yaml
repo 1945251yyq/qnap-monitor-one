@@ -1,0 +1,16 @@
+services:
+  qnap-status-lite:
+    image: ydxian/qnap-status-lite:latest
+    container_name: qnap-status-lite
+    restart: unless-stopped
+    user: "0:0"
+    env_file:
+      - /share/Container/qnap-status-lite/.env
+    ports:
+      - "3300:8080"
+    volumes:
+      - /share/Container/qnap-status-lite/data:/data
+      - /share:/share:ro
+      - /proc:/host-proc:ro
+      - /sys:/host-sys:ro
+      - /etc/config:/host-etc-config:ro

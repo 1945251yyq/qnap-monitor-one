@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>QNAP Status Lite</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header>
+    <div><span class="brand">QNAP</span><strong>Status Lite</strong></div>
+    <div class="head-actions"><span id="updated">正在连接…</span><button id="kiosk">全屏</button></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">设备状态</p><h1 id="hostname">QNAP NAS</h1><p id="identity">正在读取设备信息</p></div>
+      <div id="health" class="health waiting">采集中</div>
+    </section>
+    <section id="summary" class="summary"></section>
+    <section class="grid">
+      <article class="wide">
+        <div class="title"><h2>24 小时趋势</h2><select id="historyRange"><option value="6">6 小时</option><option value="24" selected>24 小时</option><option value="168">7 天</option></select></div>
+        <canvas id="trend" height="240"></canvas>
+        <div class="legend"><span class="cpu">CPU</span><span class="memory">内存</span><span class="volume">存储</span></div>
+      </article>
+      <article><div class="title"><h2>风扇与温度</h2></div><div id="fans" class="cards"></div></article>
+      <article><div class="title"><h2>硬盘与 SMART</h2></div><div id="disks" class="table-wrap"></div></article>
+      <article class="wide"><div class="title"><h2>存储卷</h2></div><div id="volumes" class="table-wrap"></div></article>
+      <article><div class="title"><h2>网络</h2></div><div id="networks" class="stack"></div></article>
+      <article><div class="title"><h2>PCIe / GPU</h2></div><div id="pcie" class="stack"></div></article>
+      <article class="wide"><div class="title"><h2>高占用进程</h2></div><div id="processes" class="table-wrap"></div></article>
+      <article class="wide"><div class="title"><h2>共享文件夹</h2><small>目录容量扫描默认关闭，避免拖慢 NAS</small></div><div id="shares" class="table-wrap"></div></article>
+    </section>
+  </main>
+  <footer>QNAP Status Lite · 单容器、单进程、本地存储</footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>

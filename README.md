@@ -1,578 +1,131 @@
-# QNAP 统一监控 v8.6 重构版
+# QNAP Status Lite
 
-面向威联通 QTS 与 QuTS hero 的完整监控项目。它以原始“QNAP 统一监控
-v8.6”为功能基准，保留 SNMP、宿主机、硬盘、共享文件夹、PCIe/GPU、
-高负载进程、Prometheus、PostgreSQL 和中文 Grafana Dashboard。
+为威联通 QTS / QuTS hero 重新开发的轻量设备状态面板。它不是把 Grafana、Prometheus、PostgreSQL、Telegraf 等程序打进同一镜像，而是一个约数 MB 的 Go 程序，在一个容器、一个进程内完成采集、历史记录、API 和网页显示。
 
-生产环境直接拉取现有 Docker Hub 镜像：
+适合在 Container Station 直接创建项目，也适合后期把浏览器全屏显示在独立屏幕上。
 
-```text
-ydxian/qnap-monitor-one
-```
+## 它有多轻
 
-## 主要特点
+| 项目 | QNAP Status Lite |
+|---|---|
+| 容器数量 | 1 |
+| 容器内主要进程 | 1 |
+| 数据库 | 内置 bbolt 单文件 |
+| 外部前端依赖 | 无 |
+| Prometheus / Grafana / PostgreSQL | 不需要 |
+| 支持架构 | amd64、arm64 |
 
-- 支持 QTS 与 QuTS hero 自动识别。
-- 支持 `CACHEDEV*_DATA` 与 `ZFS*_DATA` 数据卷。
-- 识别 QuTS hero ZFS ARC。
-- 保留原始 v8.6 Prometheus Job、指标名称、Dashboard 查询和字段映射。
-- SNMP 使用 Telegraf 内置 `gosmi` Translator，同时保留 Net-SNMP
-  命令作为兼容与诊断工具。
-- 全部独立 Shell 文件已还原 Compose 的 `$$` 转义，并通过 `/bin/sh -n`。
-- 所有项目脚本在镜像中统一位于 `/opt/qnap/scripts`。
-- 单个采集模块失败不会停止 PostgreSQL、Prometheus 或 Grafana。
-- 自定义镜像支持 `linux/amd64` 与 `linux/arm64`。
-- GitHub Actions 先验证完整服务组，再发布 Docker Hub 与 GHCR。
+## 监控内容
 
-## 架构
+- NAS 型号、主机名、QTS / QuTS hero、运行时间
+- CPU、内存、ZFS ARC、CPU 与系统温度
+- 风扇、硬盘状态、SMART、温度和容量
+- 存储卷容量与使用率、共享文件夹
+- 物理网卡链路、速率和实时吞吐
+- 主机高占用进程；命令行中的密码、令牌、密钥等参数会自动遮盖
+- PCIe 扩展显卡、网卡、NVMe/存储卡和 AI 加速卡
+- NVIDIA、AMD、Intel GPU 可从标准 sysfs、DRM、hwmon 与 NVIDIA proc 接口读取可用指标
+- 本地 6 小时、24 小时和 7 天趋势
+- JSON API、健康检查和可选的 Prometheus `/metrics` 接口
 
-一个自定义镜像由五个相互隔离的容器按不同入口运行。这样保留现有
-`ydxian/qnap-monitor-one` 镜像仓库，同时恢复 v8.6 的服务职责和权限边界。
+TS-673A、TS-873A 等 x86 QNAP 可使用 `linux/amd64` 镜像；ARM 机型使用同一标签自动选择 `linux/arm64`。
 
-```mermaid
-flowchart LR
-    QNAP["QNAP NAS<br/>SNMP + /proc + /sys + /share"] --> SNMP["qnap-exporter<br/>9273"]
-    QNAP --> HOST["qnap-host-exporter<br/>9274"]
-    QNAP --> PCIE["qnap-pcie-exporter<br/>9275"]
-    QNAP --> PROC["qnap-process-exporter<br/>9276"]
+## Container Station 部署
 
-    SNMP --> PROM["Prometheus<br/>9090"]
-    HOST --> PROM
-    PCIE --> PROM
-    PROC --> PROM
+### 1. 准备目录
 
-    PCIE --> BUILDER["Dashboard Builder"]
-    BUILDER --> GRAFANA["Grafana<br/>3000"]
-    PROM --> GRAFANA
-    POSTGRES["PostgreSQL"] --> GRAFANA
-```
-
-| 服务 | 职责 | 容器端口 | 默认 QNAP 端口 |
-| --- | --- | ---: | ---: |
-| `qnap-exporter` | QNAP SNMP、CPU、温度、风扇、硬盘、SNMP 网络 | 9273 | 39273 |
-| `qnap-host-exporter` | 内存、数据卷、共享文件夹、物理网卡、硬盘缓存 | 9274 | 39274 |
-| `qnap-pcie-exporter` | PCIe、GPU、扩展网卡、NVMe、传感器 | 9275 | 39275 |
-| `qnap-process-exporter` | 当前高负载进程 Top N | 9276 | 39276 |
-| `prometheus` | 指标抓取与历史存储 | 9090 | 39090 |
-| `qnap-dashboard-builder` | 按实际 PCIe 能力生成 Dashboard | — | — |
-| `grafana-postgres` | Grafana 数据库 | 5432 | 不公开 |
-| `grafana` | 中文监控 Dashboard | 3000 | 3300 |
-
-## 支持范围
-
-### QNAP 系统
-
-- QTS：EXT 系文件系统和 `CACHEDEV*_DATA`。
-- QuTS hero：ZFS、`ZFS*_DATA`、`/proc/lpl` 或 `/proc/spl` ARC。
-
-### CPU 架构
-
-- `linux/amd64`：适用于 TS-673A、TS-873A 等 x86-64 QNAP。
-- `linux/arm64`：自定义镜像和官方依赖均可构建 ARM64。
-
-PCIe/GPU 指标仍取决于目标 NAS 的内核、驱动和 QNAP 厂商工具。QNAP
-NVIDIA 驱动中的 `nvidia-smi` 必须与 NAS 自身架构匹配；项目不会把
-x86-64 厂商二进制复制进 ARM64 镜像。
-
-## 一、启用 QNAP SNMP
-
-进入 QNAP 控制台的 SNMP 设置页面：
+在 File Station 中创建：
 
 ```text
-控制台 → 网络与文件服务（或网络和虚拟交换机）→ SNMP
-```
-
-1. 启用 SNMP 服务。
-2. 启用 SNMP v1/v2c。
-3. 设置 Community。
-4. 允许 Container Station 网络访问 UDP 161。
-5. 将相同 Community 写入 `.env` 的 `SNMP_COMMUNITY`。
-
-不同 QTS/QuTS 版本的菜单名称可能略有差异。
-
-## 二、准备项目目录
-
-把整个仓库上传到：
-
-```text
-/share/Container/qnap-monitoring
-```
-
-最终至少应包含：
-
-```text
-/share/Container/qnap-monitoring/
+/share/Container/qnap-status-lite/
+├── compose.yaml
 ├── .env
-├── docker-compose.yml
-├── prometheus/prometheus.yml
-├── grafana/provisioning/
-├── postgres-data/
-├── prometheus-data/
-├── grafana-data/
-├── host-cache/
-├── pcie-cache/
-└── dashboard-runtime/
+└── data/
 ```
 
-数据目录可由 Container Station 自动创建，也可以提前通过 File Station
-建立。
+下载仓库中的 `compose.yaml` 和 `.env.example`，上传到这个目录，并把 `.env.example` 改名为 `.env`。
 
-## 三、配置 `.env`
+### 2. 开启 QNAP SNMP
 
-复制模板：
+在 QTS / QuTS hero 控制台中启用 SNMP v2c，设置团体名称。然后编辑 `.env`：
 
-```sh
-cp .env.example .env
-```
-
-必须修改：
-
-```env
+```dotenv
 NAS_IP=192.168.1.100
-QNAP_HOSTNAME=QNAP-NAS
-SNMP_COMMUNITY=change_me
-
-GF_SECURITY_ADMIN_USER=admin
-GF_SECURITY_ADMIN_PASSWORD=change_me
-
-POSTGRES_PASSWORD=change_me
-GF_DATABASE_PASSWORD=change_me
+QNAP_HOSTNAME=客厅-NAS
+SNMP_COMMUNITY=public
 ```
 
-`POSTGRES_PASSWORD` 与 `GF_DATABASE_PASSWORD` 必须相同。
+`NAS_IP` 填写 NAS 自己的局域网 IP。桥接网络容器中的 `127.0.0.1` 指向容器自身，不能代替 NAS 地址。
 
-常用配置：
+### 3. 创建项目
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `QNAP_PROJECT_ROOT` | `/share/Container/qnap-monitoring` | Compose、`.env`、Prometheus 和 Grafana 配置目录 |
-| `QNAP_DATA_ROOT` | `/share/Container/qnap-monitoring` | 持久化数据根目录 |
-| `DOCKERHUB_NAMESPACE` | `ydxian` | 保留的 Docker Hub 命名空间 |
-| `IMAGE_TAG` | `latest` | 镜像版本，可设置为 `2.0.0` 回滚 |
-| `NAS_IP` | `192.168.1.100` | QNAP NAS IP |
-| `QNAP_HOSTNAME` | `QNAP-NAS` | Dashboard 中显示的名称 |
-| `SNMP_COMMUNITY` | `change_me` | 必须与 QNAP 设置一致 |
-| `QNAP_DATA_VOLUME_NAME` | 空 | 可选，指定 `ZFS*_DATA` 或 `CACHEDEV*_DATA` |
-| `QNAP_SHARE_SCAN_INTERVAL` | `3600` | 共享文件夹深度扫描周期，秒 |
-| `PROMETHEUS_RETENTION` | `30d` | Prometheus 历史保留时间 |
-| `QNAP_PCIE_INCLUDE_BDFS` | 空 | 强制加入 PCI 地址，逗号分隔 |
-| `QNAP_PCIE_EXCLUDE_BDFS` | 空 | 强制排除 PCI 地址，逗号分隔 |
-| `QNAP_PROCESS_TOP_N` | `15` | 高负载进程数量 |
+打开 **Container Station → 应用程序 → 创建**，粘贴 `compose.yaml` 内容并部署。完成后访问：
 
-真实 `.env` 已被 `.gitignore` 排除，不得提交到 GitHub。
+```text
+http://NAS地址:3300
+```
 
-## 四、Container Station 部署
+Compose 里只有一个服务。`/proc`、`/sys`、`/etc/config` 与 `/share` 均为只读挂载，用于读取真实 NAS 状态；只有下面这个目录可写：
 
-1. 上传项目目录并创建 `.env`。
-2. 打开 **Container Station → 应用程序 → 创建**。
-3. 应用名称填写 `qnap-monitoring`。
-4. 粘贴 [`docker-compose.yml`](docker-compose.yml) 的完整内容。
-5. 点击验证。
-6. 创建并等待所有容器启动。
+```text
+/share/Container/qnap-status-lite/data:/data
+```
 
-生产 Compose 只拉取已发布的自定义镜像，不要求 NAS 本地构建：
+历史记录保存在 `data/history.db`，升级或重建容器不会丢失。
+
+## `.env` 为什么有用
+
+`.env` 不会被镜像“自动读取”。Compose 的这两处配置让它生效：
 
 ```yaml
-image: ydxian/qnap-monitor-one:latest
+env_file:
+  - /share/Container/qnap-status-lite/.env
 ```
 
-只有 `qnap-pcie-exporter` 使用 `privileged: true`；其他容器不会继承该权限。
+- `env_file` 使用 NAS 上的绝对路径，所以无论从 Container Station 粘贴 Compose，还是从文件创建项目，都能找到同一份配置。
+- 它把 NAS 地址、SNMP 团体名称和采集选项传进容器；不需要把这些内容写死在 Compose 中。
+- `.env` 已被 Git 忽略，避免把设备地址或 SNMP 团体名称公开到 GitHub。
+- 网页端口固定映射为 `3300:8080`；需要改端口时，只编辑 Compose 的左侧数字。
 
-## 五、命令行部署
+## PCIe 与显卡
 
-在项目目录执行：
+程序会优先显示带物理槽位信息的设备、具有独立显存 DRM 接口的 GPU，以及 NVIDIA 驱动登记的设备，从而避免把主板上的每个控制器都列出来。
 
-```sh
-docker compose pull
-docker compose up -d --remove-orphans
-docker compose ps
+某些 QNAP 固件不会提供 `physical_slot`。可在 NAS 的 `/sys/bus/pci/devices/` 查看 BDF，并在 `.env` 手动指定：
+
+```dotenv
+PCIE_INCLUDE_BDFS=0000:01:00.0
 ```
 
-查看日志：
+显卡能显示多少指标由 QNAP 固件和驱动实际开放的 sysfs/proc 接口决定。即使厂商驱动没有提供利用率与显存数据，设备型号、驱动、PCIe 链路和可读取的温度仍会显示。
 
-```sh
-docker compose logs --tail=200 qnap-exporter
-docker compose logs --tail=200 qnap-host-exporter
-docker compose logs --tail=200 qnap-pcie-exporter
-docker compose logs --tail=200 qnap-process-exporter
-docker compose logs --tail=200 qnap-dashboard-builder
-docker compose logs --tail=200 prometheus
-docker compose logs --tail=200 grafana
+## 主要设置
+
+| 变量 | 默认值 | 说明 |
+|---|---:|---|
+| `NAS_IP` | 必填 | NAS 的局域网 IP |
+| `SNMP_COMMUNITY` | `public` | SNMP v2c 团体名称 |
+| `COLLECT_INTERVAL` | `10s` | 实时采集间隔 |
+| `HISTORY_RETENTION` | `720h` | 历史保留时间 |
+| `PROCESS_TOP_N` | `15` | 显示的进程数量 |
+| `SHARE_SIZE_SCAN` | `false` | 是否递归计算共享目录容量 |
+| `PCIE_INCLUDE_BDFS` | 空 | 强制显示的 PCIe BDF |
+| `PCIE_EXCLUDE_BDFS` | 空 | 隐藏的 PCIe BDF |
+
+共享目录容量递归扫描默认关闭，因为在装有大量小文件的 NAS 上会制造明显磁盘 I/O。存储卷整体容量不受这个选项影响。
+
+## API
+
+- `/api/status`：当前完整状态
+- `/api/history?hours=24`：历史趋势
+- `/api/health`：容器健康检查
+- `/metrics`：Prometheus 文本格式，可供已有监控系统选用
+
+## 开发
+
+```bash
+go test ./...
+go run ./cmd/qnap-status-lite
 ```
 
-## 六、访问地址
-
-Grafana：
-
-```text
-http://NAS_IP:3300
-```
-
-Prometheus：
-
-```text
-http://NAS_IP:39090
-```
-
-Prometheus Targets：
-
-```text
-http://NAS_IP:39090/targets
-```
-
-独立显示屏：
-
-```text
-http://NAS_IP:3300/d/qnap-nas-cn-v2/?kiosk
-```
-
-## 七、QNAP 宿主机挂载
-
-以下挂载是 QNAP 采集功能的一部分，不是通用模板残留：
-
-| 宿主机路径 | 容器路径 | 权限 | 用途 |
-| --- | --- | --- | --- |
-| `/share` | `/share` | 只读 | QTS/QuTS 数据卷与共享文件夹 |
-| `/proc` | `/host-proc` | 只读 | 内存、网络、ZFS ARC、进程、NVIDIA |
-| `/sys` | `/host-sys` | 只读 | 物理网卡、PCIe、GPU、NVMe、hwmon |
-| `/etc/config` | `/host-etc-config` | 只读 | QNAP `smb.conf`、`qpkg.conf`、用户映射 |
-
-持久化目录：
-
-```text
-/share/Container/qnap-monitoring/postgres-data
-/share/Container/qnap-monitoring/prometheus-data
-/share/Container/qnap-monitoring/grafana-data
-/share/Container/qnap-monitoring/host-cache
-/share/Container/qnap-monitoring/pcie-cache
-/share/Container/qnap-monitoring/dashboard-runtime
-```
-
-## 八、Prometheus Jobs 与兼容指标
-
-保留的 Job：
-
-```text
-qnap_exporter
-qnap_host_exporter
-qnap_pcie_exporter
-qnap_process_exporter
-```
-
-保留的主要指标包括：
-
-```text
-qnap_system_cpu_usage
-qnap_system_uptime_seconds
-qnap_system_cpu_temperature_celsius
-qnap_system_system_temperature_celsius
-qnap_disk_temperature_celsius
-qnap_fan_speed_rpm
-qnap_host_memory_used_percent
-qnap_host_network_receive_bytes_total
-qnap_host_network_transmit_bytes_total
-qnap_disk_inventory_capacity_bytes
-qnap_shared_folder_summary_total_bytes
-qnap_shared_folder_summary_used_bytes
-qnap_shared_folder_summary_free_bytes
-qnap_shared_folder_summary_used_percent
-```
-
-## 九、更新与回滚
-
-更新 `latest`：
-
-```sh
-docker compose pull
-docker compose up -d --remove-orphans
-```
-
-固定版本：
-
-```env
-IMAGE_TAG=2.0.0
-```
-
-回滚：
-
-1. 将 `IMAGE_TAG` 改成上一个版本，例如 `2.0.0`。
-2. 执行：
-
-```sh
-docker compose pull
-docker compose up -d --remove-orphans
-```
-
-确认正常后才清理旧镜像：
-
-```sh
-docker image prune -f
-```
-
-## 十、镜像标签和自动发布
-
-GitHub 仓库：
-
-```text
-https://github.com/1945251yyq/qnap-monitor-one
-```
-
-镜像仓库：
-
-```text
-docker.io/ydxian/qnap-monitor-one
-ghcr.io/1945251yyq/qnap-monitor-one
-```
-
-推送到 `main` 后发布：
-
-```text
-latest
-main
-sha-短提交号
-```
-
-推送 `v2.0.0` 标签后发布：
-
-```text
-2
-2.0
-2.0.0
-latest
-```
-
-GitHub Actions 流程：
-
-1. 执行静态项目验证。
-2. 执行 `docker compose config`。
-3. 构建自定义镜像。
-4. 启动完整八服务测试栈。
-5. 检查四个 Exporter、Prometheus、Grafana 和动态 Dashboard。
-6. 验证成功后构建 AMD64/ARM64。
-7. 同时推送 Docker Hub 与 GHCR。
-
-验证失败不会推送镜像。
-
-## 十一、本地开发
-
-复制配置：
-
-```sh
-cp .env.example .env
-```
-
-静态验证：
-
-```sh
-./scripts/validate-project.sh
-```
-
-Compose 验证：
-
-```sh
-docker compose config
-```
-
-本地构建和启动：
-
-```sh
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.dev.yml \
-  up -d --build
-```
-
-完整冒烟测试：
-
-```sh
-./scripts/smoke-test.sh
-```
-
-## 十二、专项检查
-
-### 检查 Compose 转义残留
-
-真实 `.sh`、`.conf` 和 `.py` 文件不应包含 Compose 双美元转义：
-
-```sh
-grep -R -nE '\$\$\(|\$\$\{|\$\$[0-9]' \
-  exporter pcie-exporter process-exporter dashboard-builder prometheus grafana
-```
-
-预期无输出。`docker-compose.yml` 中 PostgreSQL 健康检查的
-`$$POSTGRES_USER` 属于正确的 Compose 延迟展开，不在上述检查范围内。
-
-### 检查 Shell 语法
-
-```sh
-find . -type f -name '*.sh' -print |
-while IFS= read -r file; do
-  echo "Checking ${file}"
-  /bin/sh -n "${file}"
-done
-```
-
-### 检查 SNMP Translator 和命令
-
-```sh
-docker exec qnap-exporter \
-  grep 'snmp_translator' /opt/qnap/config/qnap-snmp.conf
-
-docker exec qnap-exporter command -v snmptable
-docker exec qnap-exporter command -v snmpwalk
-docker exec qnap-exporter command -v snmptranslate
-```
-
-预期 Translator 是 `gosmi`，三个 Net-SNMP 命令均存在。
-
-### 检查容器内文件路径
-
-```sh
-docker exec qnap-host-exporter \
-  find /opt/qnap -maxdepth 3 -type f -print
-```
-
-所有 QNAP Shell 与 Python 脚本只应位于 `/opt/qnap/scripts`。
-
-### 检查平台识别
-
-```sh
-docker exec qnap-host-exporter /bin/sh -c '
-  . /opt/qnap/scripts/qnap-detect-platform.sh
-  qnap_detect_platform
-  env | grep "^QNAP_" | sort
-'
-```
-
-正常示例：
-
-```text
-QNAP_DETECTED_PLATFORM=quts_hero
-QNAP_DETECTED_FS=zfs
-QNAP_DETECTED_VOLUME_NAME=ZFS18_DATA
-```
-
-### 检查 Prometheus Targets
-
-访问：
-
-```text
-http://NAS_IP:39090/targets
-```
-
-四个 `qnap_*` Job 应为 `UP`。某个硬件指标为空不代表 Exporter 必须退出。
-
-## 十三、常见问题
-
-### `cannot open /opt/qnap/qnap-detect-platform.sh`
-
-这是旧版本路径混用错误。新镜像统一使用：
-
-```text
-/opt/qnap/scripts/qnap-detect-platform.sh
-```
-
-确认容器使用的是新版镜像标签并已重新创建。
-
-### `Syntax error: "(" unexpected`
-
-检查独立文件是否仍有 `$$(...)`：
-
-```sh
-./scripts/validate-project.sh
-```
-
-新项目的独立文件只允许 `$(...)`。
-
-### `snmptable: executable file not found`
-
-新配置使用 `gosmi`，镜像仍安装了 `net-snmp-tools`。检查：
-
-```sh
-docker exec qnap-exporter telegraf --version
-docker exec qnap-exporter command -v snmptable
-docker compose logs --tail=200 qnap-exporter
-```
-
-### SNMP 指标为空
-
-- 检查 QNAP 是否启用 SNMP v2c。
-- 检查 `.env` 中 `NAS_IP` 与 `SNMP_COMMUNITY`。
-- 检查 UDP 161 防火墙。
-- 从同一 Docker 网络测试 SNMP：
-
-```sh
-docker exec qnap-exporter \
-  snmpwalk -v2c -c "$SNMP_COMMUNITY" "$NAS_IP" \
-  1.3.6.1.4.1.24681.1.3
-```
-
-不要把真实 Community 复制到公开日志。
-
-### 共享文件夹扫描失败
-
-扫描失败会保留最后一个有效缓存并重试，不会停止 Telegraf。检查：
-
-```sh
-docker compose logs --tail=200 qnap-host-exporter
-ls -la /share/Container/qnap-monitoring/host-cache
-```
-
-### PCIe 或 GPU 没有数据
-
-- 确认使用项目中的完整 Compose。
-- 确认 `qnap-pcie-exporter` 是唯一特权容器。
-- 确认 QNAP GPU 驱动已安装。
-- 无法自动识别时填写 `QNAP_PCIE_INCLUDE_BDFS`。
-- 某设备没有传感器时项目不会伪造温度、功耗或风扇数据。
-
-### Dashboard 未生成
-
-```sh
-docker compose logs --tail=200 qnap-dashboard-builder
-ls -la /share/Container/qnap-monitoring/dashboard-runtime
-```
-
-首次无法连接 PCIe Exporter 时，Builder 会生成不含 PCIe 面板的有效
-Dashboard；后续失败会保留最后一个有效文件。
-
-### Grafana 无法连接 PostgreSQL
-
-确认以下值一致：
-
-```env
-POSTGRES_DB=grafana
-POSTGRES_USER=grafana
-POSTGRES_PASSWORD=同一个密码
-GF_DATABASE_NAME=grafana
-GF_DATABASE_USER=grafana
-GF_DATABASE_PASSWORD=同一个密码
-```
-
-## 十四、备份与隐私
-
-升级前停止应用并备份所有持久化目录，重点是：
-
-```text
-postgres-data
-prometheus-data
-grafana-data
-dashboard-runtime
-```
-
-高负载进程表会读取进程名、用户、PID 和命令行。脚本会遮蔽常见的
-password、token、secret、community 等参数，但无法保证识别所有敏感信息。
-不要把 Exporter 或 Grafana 直接暴露到互联网。
-
-## 十五、已知限制
-
-- 当前环境没有真实 QNAP SNMP OID 模拟器，最终 OID 返回值必须在目标 NAS
-  上验证。
-- 不同 QTS/QuTS 固件可能缺少部分 QNAP MIB 表。
-- ARM64 镜像可启动，但 QNAP 厂商 GPU 工具是否提供 ARM64 版本取决于设备。
-- `qnap-pcie-exporter` 需要特权模式；不需要 PCIe/GPU 时可以停止该服务，
-  其他监控仍会继续。
-- 共享文件夹深度扫描可能耗时，默认每小时执行一次并使用持久缓存。
-
-第三方组件说明见
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+本项目采用 MIT 许可证。实现为原创代码；参考项目仅用于比较功能边界与部署方式，没有复制无许可证代码或 GPL 项目的实现。
