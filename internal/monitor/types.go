@@ -7,6 +7,7 @@ type Snapshot struct {
 	System     System            `json:"system"`
 	Fans       []Fan             `json:"fans"`
 	Disks      []Disk            `json:"disks"`
+	Storage    StorageSummary    `json:"storage"`
 	Volumes    []Volume          `json:"volumes"`
 	Shares     []Share           `json:"shares"`
 	Networks   []Network         `json:"networks"`
@@ -16,19 +17,21 @@ type Snapshot struct {
 }
 
 type System struct {
-	Hostname       string  `json:"hostname"`
-	Model          string  `json:"model"`
-	Platform       string  `json:"platform"`
-	Filesystem     string  `json:"filesystem"`
-	VolumeName     string  `json:"volumeName"`
-	UptimeSeconds  float64 `json:"uptimeSeconds"`
-	CPUPercent     float64 `json:"cpuPercent"`
-	CPUTemperature float64 `json:"cpuTemperature"`
-	Temperature    float64 `json:"temperature"`
-	MemoryTotal    uint64  `json:"memoryTotal"`
-	MemoryUsed     uint64  `json:"memoryUsed"`
-	MemoryPercent  float64 `json:"memoryPercent"`
-	ZFSARCBytes    uint64  `json:"zfsArcBytes"`
+	Hostname             string  `json:"hostname"`
+	Model                string  `json:"model"`
+	Platform             string  `json:"platform"`
+	Filesystem           string  `json:"filesystem"`
+	VolumeName           string  `json:"volumeName"`
+	UptimeSeconds        float64 `json:"uptimeSeconds"`
+	CPUPercent           float64 `json:"cpuPercent"`
+	CPUTemperature       float64 `json:"cpuTemperature"`
+	Temperature          float64 `json:"temperature"`
+	MemoryTotal          uint64  `json:"memoryTotal"`
+	MemoryUsed           uint64  `json:"memoryUsed"`
+	MemoryAvailable      uint64  `json:"memoryAvailable"`
+	MemoryPercent        float64 `json:"memoryPercent"`
+	ZFSARCBytes          uint64  `json:"zfsArcBytes"`
+	ZFSARCEvictableBytes uint64  `json:"zfsArcEvictableBytes"`
 }
 
 type Fan struct {
@@ -58,11 +61,24 @@ type Volume struct {
 	Percent    float64 `json:"percent"`
 }
 
+type StorageSummary struct {
+	Total        uint64  `json:"total"`
+	Used         uint64  `json:"used"`
+	Free         uint64  `json:"free"`
+	Percent      float64 `json:"percent"`
+	ShareCount   int     `json:"shareCount"`
+	PoolCount    int     `json:"poolCount"`
+	ScanComplete bool    `json:"scanComplete"`
+}
+
 type Share struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Size    uint64 `json:"size"`
-	Scanned bool   `json:"scanned"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	RealPath   string `json:"realPath,omitempty"`
+	VolumeName string `json:"volumeName,omitempty"`
+	Size       uint64 `json:"size"`
+	Scanned    bool   `json:"scanned"`
+	Included   bool   `json:"included"`
 }
 
 type Network struct {
@@ -118,12 +134,16 @@ type Status struct {
 }
 
 type HistoryPoint struct {
-	Time          int64   `json:"time"`
-	CPU           float64 `json:"cpu"`
-	Memory        float64 `json:"memory"`
-	CPUTemp       float64 `json:"cpuTemp"`
-	SystemTemp    float64 `json:"systemTemp"`
-	NetworkRx     float64 `json:"networkRx"`
-	NetworkTx     float64 `json:"networkTx"`
-	VolumePercent float64 `json:"volumePercent"`
+	Time           int64   `json:"time"`
+	CPU            float64 `json:"cpu"`
+	Memory         float64 `json:"memory"`
+	CPUTemp        float64 `json:"cpuTemp"`
+	SystemTemp     float64 `json:"systemTemp"`
+	DiskMaxTemp    float64 `json:"diskMaxTemp"`
+	FanRPM         float64 `json:"fanRpm"`
+	NetworkRx      float64 `json:"networkRx"`
+	NetworkTx      float64 `json:"networkTx"`
+	NetworkRxTotal uint64  `json:"networkRxTotal"`
+	NetworkTxTotal uint64  `json:"networkTxTotal"`
+	VolumePercent  float64 `json:"volumePercent"`
 }

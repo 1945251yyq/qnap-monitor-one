@@ -18,6 +18,7 @@ type Collector struct {
 	prevProcs     map[int]procSample
 	shareSizes    map[string]uint64
 	lastShareScan time.Time
+	shareScanning bool
 	lastSample    time.Time
 }
 
@@ -69,9 +70,10 @@ func (c *Collector) Collect(ctx context.Context) Snapshot {
 	}
 
 	run("host", func() (func(*Snapshot), error) {
-		system, volumes, shares, networks, err := c.collectHost(now)
+		system, storage, volumes, shares, networks, err := c.collectHost(now)
 		return func(s *Snapshot) {
 			s.System = mergeSystem(s.System, system)
+			s.Storage = storage
 			s.Volumes = volumes
 			s.Shares = shares
 			s.Networks = networks
@@ -180,10 +182,14 @@ func mergeSystem(base, value System) System {
 	if value.MemoryTotal > 0 {
 		base.MemoryTotal = value.MemoryTotal
 		base.MemoryUsed = value.MemoryUsed
+		base.MemoryAvailable = value.MemoryAvailable
 		base.MemoryPercent = value.MemoryPercent
 	}
 	if value.ZFSARCBytes > 0 {
 		base.ZFSARCBytes = value.ZFSARCBytes
+	}
+	if value.ZFSARCEvictableBytes > 0 {
+		base.ZFSARCEvictableBytes = value.ZFSARCEvictableBytes
 	}
 	return base
 }

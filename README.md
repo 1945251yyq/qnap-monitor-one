@@ -20,13 +20,15 @@
 - NAS 型号、主机名、QTS / QuTS hero、运行时间
 - CPU、内存、ZFS ARC、CPU 与系统温度
 - 风扇、硬盘状态、SMART、温度和容量
-- 存储卷容量与使用率、共享文件夹
-- 物理网卡链路、速率和实时吞吐
+- 主存储池总量、共享文件夹占用、可用容量和使用率；QuTS 的内部 ZFS 数据集会自动按池去重
+- 每个共享文件夹的名称、所在卷、真实路径、目录容量及占总存储比例
+- 物理网卡链路、速率、实时吞吐和启动以来累计收发量
 - 主机高占用进程；命令行中的密码、令牌、密钥等参数会自动遮盖
 - PCIe 扩展显卡、网卡、NVMe/存储卡和 AI 加速卡
 - NVIDIA、AMD、Intel GPU 可从标准 sysfs、DRM、hwmon 与 NVIDIA proc 接口读取可用指标
 - 自动识别 QNAP `NVIDIA_GPU_DRV` 套件并读取 GPU、显存、温度、风扇、功耗和编解码负载
-- 本地 6 小时、24 小时和 7 天趋势
+- CPU/内存、设备温度、风扇、网络四组独立趋势，每组显示当前、最高和平均值
+- 本地 1 小时、6 小时、24 小时和 7 天历史
 - JSON API、健康检查和可选的 Prometheus `/metrics` 接口
 
 TS-673A、TS-873A 等 x86 QNAP 可使用 `linux/amd64` 镜像；ARM 机型使用同一标签自动选择 `linux/arm64`。
@@ -117,11 +119,14 @@ privileged: true
 | `COLLECT_INTERVAL` | `10s` | 实时采集间隔 |
 | `HISTORY_RETENTION` | `720h` | 历史保留时间 |
 | `PROCESS_TOP_N` | `15` | 显示的进程数量 |
-| `SHARE_SIZE_SCAN` | `false` | 是否递归计算共享目录容量 |
+| `SHARE_SIZE_SCAN` | `true` | 是否在后台递归计算共享目录容量 |
+| `SHARE_SCAN_INTERVAL` | `1h` | 共享目录容量重新统计间隔 |
 | `PCIE_INCLUDE_BDFS` | 空 | 强制显示的 PCIe BDF |
 | `PCIE_EXCLUDE_BDFS` | 空 | 隐藏的 PCIe BDF |
 
-共享目录容量递归扫描默认关闭，因为在装有大量小文件的 NAS 上会制造明显磁盘 I/O。存储卷整体容量不受这个选项影响。
+共享目录容量由后台任务每小时统计一次，不会阻塞 CPU、温度、网络等实时采集。首次部署时页面会先显示共享文件夹名称和路径，并在统计完成后补上容量；大量小文件的 NAS 如果不希望产生目录遍历 I/O，可以把 `SHARE_SIZE_SCAN` 改为 `false`。
+
+页面主体展示的是用户在 File Station 中看到的共享文件夹。`ZFS18_DATA`、`CACHEDEV1_DATA` 等威联通内部挂载点不会再伪装成多个存储卷重复占据主界面，仅收纳在底部折叠的“内部存储数据集（诊断信息）”中。
 
 ## API
 

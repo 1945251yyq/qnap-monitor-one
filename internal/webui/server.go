@@ -72,14 +72,28 @@ func (s *Server) metrics(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	fmt.Fprintf(w, "# HELP qnap_system_cpu_percent NAS CPU utilization.\n# TYPE qnap_system_cpu_percent gauge\nqnap_system_cpu_percent %.3f\n", snapshot.System.CPUPercent)
 	fmt.Fprintf(w, "# HELP qnap_system_memory_percent NAS memory utilization.\n# TYPE qnap_system_memory_percent gauge\nqnap_system_memory_percent %.3f\n", snapshot.System.MemoryPercent)
+	fmt.Fprintf(w, "qnap_system_memory_total_bytes %d\nqnap_system_memory_used_bytes %d\nqnap_system_memory_available_bytes %d\n", snapshot.System.MemoryTotal, snapshot.System.MemoryUsed, snapshot.System.MemoryAvailable)
+	fmt.Fprintf(w, "qnap_system_zfs_arc_bytes %d\nqnap_system_zfs_arc_evictable_bytes %d\n", snapshot.System.ZFSARCBytes, snapshot.System.ZFSARCEvictableBytes)
 	fmt.Fprintf(w, "# HELP qnap_system_temperature_celsius NAS system temperature.\n# TYPE qnap_system_temperature_celsius gauge\nqnap_system_temperature_celsius %.3f\n", snapshot.System.Temperature)
 	fmt.Fprintf(w, "# HELP qnap_cpu_temperature_celsius NAS CPU temperature.\n# TYPE qnap_cpu_temperature_celsius gauge\nqnap_cpu_temperature_celsius %.3f\n", snapshot.System.CPUTemperature)
+	fmt.Fprintf(w, "qnap_shared_storage_total_bytes %d\nqnap_shared_storage_used_bytes %d\nqnap_shared_storage_free_bytes %d\nqnap_shared_storage_used_percent %.3f\nqnap_shared_storage_share_count %d\n", snapshot.Storage.Total, snapshot.Storage.Used, snapshot.Storage.Free, snapshot.Storage.Percent, snapshot.Storage.ShareCount)
+	for _, fan := range snapshot.Fans {
+		fmt.Fprintf(w, "qnap_fan_speed_rpm{name=%q} %.3f\n", label(fan.Name), fan.Speed)
+	}
+	for _, disk := range snapshot.Disks {
+		fmt.Fprintf(w, "qnap_disk_temperature_celsius{bay=%q,model=%q} %.3f\n", label(disk.Bay), label(disk.Model), disk.Temperature)
+	}
+	for _, share := range snapshot.Shares {
+		fmt.Fprintf(w, "qnap_shared_folder_size_bytes{name=%q,path=%q,volume=%q} %d\n", label(share.Name), label(share.Path), label(share.VolumeName), share.Size)
+	}
 	for _, volume := range snapshot.Volumes {
 		fmt.Fprintf(w, "qnap_volume_used_percent{name=%q,path=%q} %.3f\n", label(volume.Name), label(volume.Path), volume.Percent)
 	}
 	for _, network := range snapshot.Networks {
 		fmt.Fprintf(w, "qnap_network_receive_bytes_per_second{interface=%q} %.3f\n", label(network.Name), network.RxPerSec)
 		fmt.Fprintf(w, "qnap_network_transmit_bytes_per_second{interface=%q} %.3f\n", label(network.Name), network.TxPerSec)
+		fmt.Fprintf(w, "qnap_network_receive_bytes_total{interface=%q} %d\n", label(network.Name), network.RxBytes)
+		fmt.Fprintf(w, "qnap_network_transmit_bytes_total{interface=%q} %d\n", label(network.Name), network.TxBytes)
 	}
 	for _, device := range snapshot.PCIe {
 		fmt.Fprintf(w, "qnap_pcie_temperature_celsius{bdf=%q,model=%q} %.3f\n", label(device.BDF), label(device.Model), device.Temperature)

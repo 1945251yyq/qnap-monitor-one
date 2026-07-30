@@ -23,7 +23,7 @@ type netSample struct {
 	time time.Time
 }
 
-func (c *Collector) collectHost(now time.Time) (System, []Volume, []Share, []Network, error) {
+func (c *Collector) collectHost(now time.Time) (System, StorageSummary, []Volume, []Share, []Network, error) {
 	system := System{Hostname: c.cfg.Hostname, CPUPercent: -1}
 	var errs []string
 
@@ -41,12 +41,15 @@ func (c *Collector) collectHost(now time.Time) (System, []Volume, []Share, []Net
 		c.mu.Unlock()
 	}
 
-	total, available, err := readMemory(filepath.Join(c.cfg.ProcRoot, "meminfo"))
+	total, available, arcSize, arcEvictable, err := readHostMemory(
+		filepath.Join(c.cfg.ProcRoot, "meminfo"), c.cfg.ProcRoot,
+	)
 	if err != nil {
 		errs = append(errs, err.Error())
 	} else {
 		system.MemoryTotal = total
 		system.MemoryUsed = total - available
+		system.MemoryAvailable = available
 		if total > 0 {
 			system.MemoryPercent = float64(system.MemoryUsed) * 100 / float64(total)
 		}
@@ -54,17 +57,19 @@ func (c *Collector) collectHost(now time.Time) (System, []Volume, []Share, []Net
 	if uptime, err := readFloatFile(filepath.Join(c.cfg.ProcRoot, "uptime")); err == nil {
 		system.UptimeSeconds = uptime
 	}
-	system.ZFSARCBytes = readARC(c.cfg.ProcRoot)
+	system.ZFSARCBytes = arcSize
+	system.ZFSARCEvictableBytes = arcEvictable
 	volumes := c.collectVolumes(&system)
 	shares := c.collectShares()
+	storage := c.summarizeStorage(shares, volumes)
 	networks, err := c.collectNetworks(now)
 	if err != nil {
 		errs = append(errs, err.Error())
 	}
 	if len(errs) > 0 {
-		return system, volumes, shares, networks, errors.New(strings.Join(errs, "; "))
+		return system, storage, volumes, shares, networks, errors.New(strings.Join(errs, "; "))
 	}
-	return system, volumes, shares, networks, nil
+	return system, storage, volumes, shares, networks, nil
 }
 
 func readCPU(path string) (cpuSample, error) {
@@ -101,6 +106,16 @@ func readCPU(path string) (cpuSample, error) {
 }
 
 func readMemory(path string) (uint64, uint64, error) {
+	return readMemoryValues(path, 0)
+}
+
+func readHostMemory(path, procRoot string) (uint64, uint64, uint64, uint64, error) {
+	arcSize, arcEvictable := readARC(procRoot)
+	total, available, err := readMemoryValues(path, arcEvictable)
+	return total, available, arcSize, arcEvictable, err
+}
+
+func readMemoryValues(path string, arcEvictable uint64) (uint64, uint64, error) {
 	values := map[string]uint64{}
 	file, err := os.Open(path)
 	if err != nil {
@@ -117,10 +132,9 @@ func readMemory(path string) (uint64, uint64, error) {
 		values[strings.TrimSuffix(fields[0], ":")] = value * 1024
 	}
 	total := values["MemTotal"]
-	available := values["MemAvailable"]
-	if available == 0 {
-		available = values["MemFree"] + values["Buffers"] + values["Cached"]
-	}
+	// Match QNAP Resource Monitor: page cache, buffers and evictable ZFS ARC
+	// are reclaimable, so they are shown as available rather than used RAM.
+	available := values["MemFree"] + values["Buffers"] + values["Cached"] + arcEvictable
 	if total == 0 {
 		return 0, 0, errors.New("主机 MemTotal 不可用")
 	}
@@ -139,7 +153,7 @@ func readFloatFile(path string) (float64, error) {
 	return strconv.ParseFloat(fields[0], 64)
 }
 
-func readARC(procRoot string) uint64 {
+func readARC(procRoot string) (uint64, uint64) {
 	for _, path := range []string{
 		filepath.Join(procRoot, "spl/kstat/zfs/arcstats"),
 		filepath.Join(procRoot, "lpl/kstat/zfs/arcstats"),
@@ -149,17 +163,24 @@ func readARC(procRoot string) uint64 {
 			continue
 		}
 		scanner := bufio.NewScanner(file)
+		var size, evictable uint64
 		for scanner.Scan() {
 			fields := strings.Fields(scanner.Text())
-			if len(fields) >= 3 && fields[0] == "size" {
+			if len(fields) >= 3 && (fields[0] == "size" || fields[0] == "evictable") {
 				value, _ := strconv.ParseUint(fields[len(fields)-1], 10, 64)
-				file.Close()
-				return value
+				if fields[0] == "size" {
+					size = value
+				} else {
+					evictable = value
+				}
 			}
 		}
 		file.Close()
+		if size > 0 || evictable > 0 {
+			return size, evictable
+		}
 	}
-	return 0
+	return 0, 0
 }
 
 func (c *Collector) collectVolumes(system *System) []Volume {
@@ -235,38 +256,184 @@ func (c *Collector) collectShares() []Share {
 		}
 		key, value, ok := strings.Cut(line, "=")
 		if ok && strings.EqualFold(strings.TrimSpace(key), "path") {
-			path := strings.TrimSpace(value)
-			shares = append(shares, Share{Name: current, Path: path})
+			path := strings.Trim(strings.TrimSpace(value), `"`)
+			if !strings.HasPrefix(path, "/share/") || strings.Contains(path, "%") {
+				current = ""
+				continue
+			}
+			mountedPath := filepath.Join(c.cfg.ShareRoot, strings.TrimPrefix(path, "/share/"))
+			realPath, realErr := filepath.EvalSymlinks(mountedPath)
+			if realErr != nil {
+				current = ""
+				continue
+			}
+			realShareRoot, rootErr := filepath.EvalSymlinks(c.cfg.ShareRoot)
+			if rootErr != nil {
+				realShareRoot = filepath.Clean(c.cfg.ShareRoot)
+			}
+			relative := strings.TrimPrefix(realPath, realShareRoot+string(os.PathSeparator))
+			volumeName := strings.SplitN(relative, string(os.PathSeparator), 2)[0]
+			if !isQNAPVolumeName(volumeName) {
+				current = ""
+				continue
+			}
+			shares = append(shares, Share{
+				Name: current, Path: path, RealPath: realPath,
+				VolumeName: volumeName, Included: true,
+			})
 			current = ""
 		}
 	}
+	shares = uniqueShares(shares)
 	c.mu.RLock()
 	cached := make(map[string]uint64, len(c.shareSizes))
 	for path, size := range c.shareSizes {
 		cached[path] = size
 	}
 	lastScan := c.lastShareScan
+	scanning := c.shareScanning
 	c.mu.RUnlock()
+	markIncludedShares(shares)
 	for index := range shares {
 		if size, ok := cached[shares[index].Path]; ok {
 			shares[index].Size = size
 			shares[index].Scanned = true
 		}
 	}
-	if c.cfg.ShareScanEnabled && (lastScan.IsZero() || time.Since(lastScan) >= c.cfg.ShareScanInterval) {
-		next := map[string]uint64{}
-		for index := range shares {
-			size := directorySize(shares[index].Path)
-			next[shares[index].Path] = size
-			shares[index].Size = size
-			shares[index].Scanned = true
-		}
+	if c.cfg.ShareScanEnabled && !scanning && (lastScan.IsZero() || time.Since(lastScan) >= c.cfg.ShareScanInterval) {
 		c.mu.Lock()
-		c.shareSizes = next
-		c.lastShareScan = time.Now()
+		if !c.shareScanning {
+			c.shareScanning = true
+			scanTargets := append([]Share(nil), shares...)
+			go c.scanShareSizes(scanTargets)
+		}
 		c.mu.Unlock()
 	}
 	return shares
+}
+
+func (c *Collector) scanShareSizes(shares []Share) {
+	next := make(map[string]uint64, len(shares))
+	for _, share := range shares {
+		next[share.Path] = directorySize(share.RealPath)
+	}
+	c.mu.Lock()
+	c.shareSizes = next
+	c.lastShareScan = time.Now()
+	c.shareScanning = false
+	c.mu.Unlock()
+}
+
+func isQNAPVolumeName(name string) bool {
+	return (strings.HasPrefix(name, "ZFS") || strings.HasPrefix(name, "CACHEDEV")) &&
+		strings.HasSuffix(name, "_DATA")
+}
+
+func uniqueShares(shares []Share) []Share {
+	seen := map[string]bool{}
+	result := make([]Share, 0, len(shares))
+	for _, share := range shares {
+		if seen[share.RealPath] {
+			continue
+		}
+		seen[share.RealPath] = true
+		result = append(result, share)
+	}
+	return result
+}
+
+func markIncludedShares(shares []Share) {
+	for index := range shares {
+		shares[index].Included = true
+		for other := range shares {
+			if index == other {
+				continue
+			}
+			parent := filepath.Clean(shares[other].RealPath) + string(os.PathSeparator)
+			if strings.HasPrefix(filepath.Clean(shares[index].RealPath), parent) {
+				shares[index].Included = false
+				break
+			}
+		}
+	}
+}
+
+func (c *Collector) summarizeStorage(shares []Share, volumes []Volume) StorageSummary {
+	summary := StorageSummary{ShareCount: len(shares), ScanComplete: len(shares) > 0}
+	volumeByName := make(map[string]Volume, len(volumes))
+	for _, volume := range volumes {
+		volumeByName[volume.Name] = volume
+	}
+	pools := map[string]uint64{}
+	for _, share := range shares {
+		volume, ok := volumeByName[share.VolumeName]
+		if !ok {
+			continue
+		}
+		key := c.storagePoolKey(volume)
+		if volume.Total > pools[key] {
+			pools[key] = volume.Total
+		}
+		if !share.Scanned {
+			summary.ScanComplete = false
+		} else if share.Included {
+			summary.Used += share.Size
+		}
+	}
+	for _, total := range pools {
+		summary.Total += total
+	}
+	summary.PoolCount = len(pools)
+	if summary.Total == 0 && len(volumes) > 0 {
+		summary.Total = volumes[0].Total
+		summary.PoolCount = 1
+	}
+	if !summary.ScanComplete {
+		// Until the folder scan is complete, a statfs value is more honest than
+		// displaying zero used space.
+		for _, volume := range volumes {
+			if summary.Used == 0 && volume.Used > 0 {
+				summary.Used = volume.Used
+			}
+		}
+	}
+	if summary.Used > summary.Total {
+		summary.Used = summary.Total
+	}
+	summary.Free = summary.Total - summary.Used
+	if summary.Total > 0 {
+		summary.Percent = float64(summary.Used) * 100 / float64(summary.Total)
+	}
+	return summary
+}
+
+func (c *Collector) storagePoolKey(volume Volume) string {
+	file, err := os.Open(filepath.Join(c.cfg.ProcRoot, "mounts"))
+	if err == nil {
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			fields := strings.Fields(scanner.Text())
+			if len(fields) < 3 {
+				continue
+			}
+			mountpoint := strings.ReplaceAll(fields[1], `\040`, " ")
+			if filepath.Clean(mountpoint) != filepath.Clean(volume.Path) {
+				continue
+			}
+			source := strings.ReplaceAll(fields[0], `\040`, " ")
+			if strings.EqualFold(fields[2], "zfs") {
+				return "zfs:" + strings.SplitN(source, "/", 2)[0]
+			}
+			return "source:" + source
+		}
+	}
+	// QNAP maps the datasets of one QuTS pool to the same apparent capacity.
+	// Capacity is a safer fallback than multiplying every ZFS*_DATA dataset.
+	if volume.Filesystem == "zfs" {
+		return fmt.Sprintf("zfs-capacity:%d", volume.Total)
+	}
+	return "volume:" + volume.Name
 }
 
 func directorySize(root string) uint64 {

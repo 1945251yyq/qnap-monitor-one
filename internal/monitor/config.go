@@ -46,7 +46,7 @@ func ConfigFromEnv() Config {
 		CommandLimit:      envInt("PROCESS_COMMAND_LIMIT", 220, 80, 500),
 		IncludeBDFs:       envSet("PCIE_INCLUDE_BDFS"),
 		ExcludeBDFs:       envSet("PCIE_EXCLUDE_BDFS"),
-		ShareScanEnabled:  envBool("SHARE_SIZE_SCAN", false),
+		ShareScanEnabled:  envBool("SHARE_SIZE_SCAN", true),
 		ShareScanInterval: envDuration("SHARE_SCAN_INTERVAL", time.Hour),
 	}
 }

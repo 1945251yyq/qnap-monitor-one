@@ -51,8 +51,21 @@ func (s *Store) Add(snapshot monitor.Snapshot) error {
 	for _, network := range snapshot.Networks {
 		point.NetworkRx += network.RxPerSec
 		point.NetworkTx += network.TxPerSec
+		point.NetworkRxTotal += network.RxBytes
+		point.NetworkTxTotal += network.TxBytes
 	}
-	if len(snapshot.Volumes) > 0 {
+	for _, disk := range snapshot.Disks {
+		if disk.Temperature > point.DiskMaxTemp {
+			point.DiskMaxTemp = disk.Temperature
+		}
+	}
+	for _, fan := range snapshot.Fans {
+		if fan.Speed > point.FanRPM {
+			point.FanRPM = fan.Speed
+		}
+	}
+	point.VolumePercent = snapshot.Storage.Percent
+	if snapshot.Storage.Total == 0 && len(snapshot.Volumes) > 0 {
 		point.VolumePercent = snapshot.Volumes[0].Percent
 	}
 	value, err := json.Marshal(point)
